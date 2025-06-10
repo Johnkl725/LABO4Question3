@@ -1,11 +1,11 @@
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 from sklearn.preprocessing import StandardScaler
 from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_score
+from sklearn.metrics import silhouette_score, silhouette_samples
 from sklearn.decomposition import PCA
-import seaborn as sns
 import tkinter as tk
 from tkinter import ttk, messagebox, filedialog
 
@@ -13,7 +13,7 @@ class KMeansClusteringApp:
     def __init__(self, master):
         self.master = master
         master.title("Clustering con K-Means")
-        master.geometry("500x400")
+        master.geometry("520x480")
 
         self.dataset = None
         self.numeric_columns = []
@@ -25,7 +25,7 @@ class KMeansClusteringApp:
         # Lista de variables numéricas
         self.columns_label = tk.Label(master, text="Seleccione variables numéricas:")
         self.columns_label.pack()
-        self.columns_listbox = tk.Listbox(master, selectmode='multiple', width=50)
+        self.columns_listbox = tk.Listbox(master, selectmode='multiple', width=60)
         self.columns_listbox.pack(pady=5)
 
         # Entrada para el valor de K
@@ -36,7 +36,11 @@ class KMeansClusteringApp:
 
         # Botón para ejecutar K-Means
         self.run_button = tk.Button(master, text="Ejecutar K-Means", command=self.run_kmeans)
-        self.run_button.pack(pady=20)
+        self.run_button.pack(pady=10)
+
+        # Botón para mostrar gráfico de codo
+        self.elbow_button = tk.Button(master, text="Mostrar gráfico de codo", command=self.plot_elbow)
+        self.elbow_button.pack(pady=5)
 
     def load_dataset(self):
         file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
@@ -87,15 +91,13 @@ class KMeansClusteringApp:
 
         # Resumen estadístico por clúster
         summary = clustered_data.groupby("Cluster").mean().round(2)
-
-        # Mostrar resumen en consola
         print("\nResumen por clúster:\n", summary)
 
         # Reducción de dimensionalidad para visualización
         pca = PCA(n_components=2)
         components = pca.fit_transform(data_scaled)
 
-        # Visualización
+        # Visualización PCA
         plt.figure(figsize=(8, 6))
         sns.scatterplot(x=components[:, 0], y=components[:, 1], hue=labels, palette="Set2", legend="full")
         plt.title(f"Clustering con K={k} | Silhouette Score = {sil_score:.3f}")
@@ -104,7 +106,67 @@ class KMeansClusteringApp:
         plt.tight_layout()
         plt.show()
 
+        # Conteo de puntos por clúster
+        plt.figure(figsize=(6, 4))
+        sns.countplot(x=labels)
+        plt.title("Cantidad de puntos por clúster")
+        plt.xlabel("Clúster")
+        plt.ylabel("Cantidad")
+        plt.tight_layout()
+        plt.show()
+
+        # Gráfico de Silhouette por muestra
+        silhouette_vals = silhouette_samples(data_scaled, labels)
+        plt.figure(figsize=(8, 5))
+        y_lower = 10
+        for i in range(k):
+            ith_cluster_vals = silhouette_vals[labels == i]
+            ith_cluster_vals.sort()
+            size_cluster_i = ith_cluster_vals.shape[0]
+            y_upper = y_lower + size_cluster_i
+            plt.fill_betweenx(np.arange(y_lower, y_upper), 0, ith_cluster_vals)
+            plt.text(-0.05, y_lower + 0.5 * size_cluster_i, str(i))
+            y_lower = y_upper + 10
+        plt.axvline(x=sil_score, color="red", linestyle="--")
+        plt.xlabel("Coeficiente de Silhouette")
+        plt.ylabel("Clúster")
+        plt.title("Gráfico de Silhouette por muestra")
+        plt.tight_layout()
+        plt.show()
+
         messagebox.showinfo("Resultado", f"Silhouette Score para K={k}: {sil_score:.3f}\n\nResumen por clúster impreso en consola.")
+
+    def plot_elbow(self):
+        if self.dataset is None:
+            messagebox.showwarning("Advertencia", "Primero cargue un dataset.")
+            return
+
+        selected_indices = self.columns_listbox.curselection()
+        if not selected_indices:
+            messagebox.showwarning("Advertencia", "Seleccione al menos una variable numérica.")
+            return
+
+        selected_columns = [self.numeric_columns[i] for i in selected_indices]
+        data = self.dataset[selected_columns].dropna()
+
+        scaler = StandardScaler()
+        data_scaled = scaler.fit_transform(data)
+
+        inertias = []
+        ks = range(2, 21)
+        for k in ks:
+            km = KMeans(n_clusters=k, random_state=42, n_init='auto')
+            km.fit(data_scaled)
+            inertias.append(km.inertia_)
+
+        plt.figure(figsize=(8, 5))
+        plt.plot(ks, inertias, marker='o')
+        plt.xlabel("Número de Clústers (K)")
+        plt.ylabel("Inercia (Suma de Distancias)")
+        plt.title("Método del Codo para Selección de K")
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
 
 if __name__ == "__main__":
     root = tk.Tk()
